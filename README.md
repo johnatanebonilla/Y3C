@@ -1,4 +1,4 @@
-# YouTube Transcription Corpus Creator
+# Y3C YouTube Captions Corpus Creator
 
 This project provides a Python script to create a corpus of YouTube transcriptions. The script fetches video URLs from YouTube channels specified in an Excel file, downloads the transcriptions in the desired language, restores punctuation and capitalization, cleans unnecessary spaces, and saves the results in parquet files. It also generates an Excel file with corpus statistics.
 
@@ -25,7 +25,7 @@ The `create_corpus.py` script can be run from the command line with the followin
 
 - `--channels`: Path to the Excel file containing the list of channels.
 - `--output`: Directory where the output files will be saved, including the parquet files and the statistics Excel file.
-- `--lang`: Language code for the captions (e.g., `es` for Spanish, `en` for English).
+- `--lang`: Language code for the captions (e.g., `es` for Spanish, `en` for English, `de` for German).
 
 ### Example
 
