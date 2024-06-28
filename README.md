@@ -10,8 +10,8 @@ This project provides a Python script to create a corpus of YouTube transcriptio
 
 1. Clone this repository:
     ```sh
-    git clone https://github.com/your-username/repository-name.git
-    cd repository-name
+    git clone https://github.com/johnatanebonilla/y3c.git
+    cd y3c.git
     ```
 
 2. Ensure you have `pip` updated:
