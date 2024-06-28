@@ -1,4 +1,4 @@
-# Y3C YouTube Captions Corpus Creator
+# Y3C: YouTube Captions Corpus Creator
 
 This project provides a Python script to create a corpus of YouTube transcriptions. The script fetches video URLs from YouTube channels specified in an Excel file, downloads the transcriptions in the desired language, restores punctuation and capitalization, cleans unnecessary spaces, and saves the results in parquet files. It also generates an Excel file with corpus statistics.
 
