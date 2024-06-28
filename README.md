@@ -30,7 +30,7 @@ The `y3c.py` script can be run from the command line with the following argument
 ### Example
 
 ```sh
-python y3c.py --channels channels_test.xlsx --output folder_channels --lang es
+python y3c.py --channels corpus/channels.xlsx --output corpus/results --lang es
  ```
 
 ### Channel File Format
