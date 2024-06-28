@@ -12,6 +12,7 @@ def install_requirements():
         "deepmultilingualpunctuation",
         "nltk",
         "openpyxl",
+        "datasets"
     ]
     
     for package in required_packages:
@@ -20,18 +21,21 @@ def install_requirements():
 install_requirements()
 
 import argparse
+import scrapetube
 import os
 import pandas as pd
 import datetime
 import time
 import glob
 import re
+import csv
 from pytube import YouTube
 from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled
 from transformers import AutoTokenizer, pipeline, AutoModelForTokenClassification
 from deepmultilingualpunctuation import PunctuationModel
-import torch 
+import torch
 import nltk
+from datasets import Dataset, DatasetDict
 
 nltk.download('punkt')
 
@@ -120,8 +124,8 @@ def get_result_text_capitalization(list_entity, text):
     result_words = []
     tmp_word = ""
 
-    for idx, entity in enumerate(list_entity):
-        tag = entity["entity"]
+    for entity in list_entity:
+        tag = entity["entity_group"]
         word = entity["word"]
         start = entity["start"]
         end = entity["end"]
@@ -130,8 +134,9 @@ def get_result_text_capitalization(list_entity, text):
         if word[0] == "#":
             subword = True
             if tmp_word == "":
-                p_s = list_entity[idx-1]["start"]
-                p_e = list_entity[idx-1]["end"]
+                prev_entity = list_entity[list_entity.index(entity)-1]
+                p_s = prev_entity["start"]
+                p_e = prev_entity["end"]
                 tmp_word = text[p_s:p_e] + text[start:end]
             else:
                 tmp_word = tmp_word + text[start:end]
@@ -159,13 +164,17 @@ def clean_punctuation(text):
         text = re.sub(r'([¿¡])\s+', r'\1', text)
     return text
 
+# Función para eliminar marcas entre corchetes cuadrados
+def remove_square_bracket_content(text):
+    return re.sub(r'\[.*?\]', '', text)
+
 # Inicializar el modelo y tokenizer
 punctuation_model = PunctuationModel(model="kredor/punctuate-all")
 tokenizer = AutoTokenizer.from_pretrained("bert-base-multilingual-cased")
 capitalization_model_path = "VOCALINLP/spanish_capitalization_punctuation_restoration_sanivert"
 capitalization_model = AutoModelForTokenClassification.from_pretrained(capitalization_model_path)
 capitalization_tokenizer = AutoTokenizer.from_pretrained(capitalization_model_path)
-capitalization_pipe = pipeline("token-classification", model=capitalization_model, tokenizer=capitalization_tokenizer, device=0 if torch.cuda.is_available() else -1)
+capitalization_pipe = pipeline("token-classification", model=capitalization_model, tokenizer=capitalization_tokenizer, device=0 if torch.cuda.is_available() else -1, aggregation_strategy="simple")
 
 def main():
     parser = argparse.ArgumentParser(description="Create corpus from YouTube channels")
@@ -280,8 +289,11 @@ def main():
             transcription = ' '.join(lines[transcription_index:])
             record['Transcription'] = transcription.strip()
 
+            # Eliminar marcas entre corchetes cuadrados antes de procesar
+            clean_transcription = remove_square_bracket_content(record['Transcription'])
+            
             # Restaurar la puntuación de la transcripción
-            record['Transcription_punct'] = restore_punctuation_in_chunks(record['Transcription'], punctuation_model)
+            record['Transcription_punct'] = restore_punctuation_in_chunks(clean_transcription, punctuation_model)
 
             # Agregar el registro a la lista de datos
             data.append(record)
@@ -289,21 +301,38 @@ def main():
     # Convertir los datos a un DataFrame
     df_corpus = pd.DataFrame(data)
 
-    # Aplicar capitalización a las transcripciones
-    for index, row in df_corpus.iterrows():
-        chunks = split_text_into_chunks(row['Transcription_punct'], capitalization_tokenizer, max_length=512)
-        capitalized_chunks = [get_result_text_capitalization(capitalization_pipe(chunk), chunk) for chunk in chunks]
-        df_corpus.at[index, 'Transcription_punct'] = " ".join(capitalized_chunks)
+    # Crear un dataset de Hugging Face
+    dataset = Dataset.from_pandas(df_corpus)
+
+    # Definir la función de procesamiento para capitalización
+    def capitalize_transcription(batch):
+        batch['Transcription_punct'] = [get_result_text_capitalization(
+            capitalization_pipe(transcription), transcription
+        ) for transcription in batch['Transcription_punct']]
+        return batch
+
+    # Aplicar capitalización al dataset
+    dataset = dataset.map(capitalize_transcription, batched=True, batch_size=8)
+
+    # Convertir el dataset de nuevo a DataFrame
+    df_corpus = dataset.to_pandas()
 
     # Limpiar espacios innecesarios alrededor de la puntuación
     df_corpus['Transcription_punct'] = df_corpus['Transcription_punct'].apply(clean_punctuation)
 
     # Dividir el DataFrame en fragmentos de menos de 200 MB y guardar en parquet
     max_size_mb = 200
-    rows_per_chunk = len(df_corpus) // (max_size_mb / (df_corpus.memory_usage(deep=True).sum() / len(df_corpus) / 1024**2))
+    df_memory_size_mb = df_corpus.memory_usage(deep=True).sum() / 1024**2
 
-    for i, chunk in enumerate(range(0, len(df_corpus), int(rows_per_chunk))):
-        chunk_df = df_corpus.iloc[chunk:chunk + int(rows_per_chunk)]
+    if df_memory_size_mb < max_size_mb:
+        rows_per_chunk = len(df_corpus)
+    else:
+        rows_per_chunk = len(df_corpus) // (max_size_mb / (df_memory_size_mb / len(df_corpus)))
+
+    rows_per_chunk = max(1, int(rows_per_chunk))  # Asegurarse de que rows_per_chunk sea al menos 1
+
+    for i, chunk in enumerate(range(0, len(df_corpus), rows_per_chunk)):
+        chunk_df = df_corpus.iloc[chunk:chunk + rows_per_chunk]
         output_chunk_path = os.path.join(output_dir, f'corpus_data_part_{i+1}.parquet')
         chunk_df.to_parquet(output_chunk_path, index=False)
         print(f"Chunk {i+1} successfully saved to {output_chunk_path}")
@@ -312,12 +341,12 @@ def main():
     df_corpus['Token_Count'] = df_corpus['Transcription_punct'].apply(lambda x: len(nltk.word_tokenize(x)))
     total_titles = df_corpus['Title'].count()
     total_length_seconds = df_corpus['Length'].sum()
-    total_length_hms = str(datetime.timedelta(seconds=total_length_seconds))
+    total_length_hms = str(datetime.timedelta(seconds=int(total_length_seconds)))  # Convertir numpy.int64 a int
     total_tokens = df_corpus['Token_Count'].sum()
 
     titles_by_author = df_corpus.groupby('Author')['Title'].count()
-    length_by_author_seconds = df_corpus.groupby('Author')['Length'].sum()
-    length_by_author_hms = length_by_author_seconds.apply(lambda x: str(datetime.timedelta(seconds=x)))
+    length_by_author_seconds = df_corpus.groupby('Author')['Length'].sum().astype(int)  # Convertir numpy.int64 a int
+    length_by_author_hms = length_by_author_seconds.apply(lambda x: str(datetime.timedelta(seconds=int(x))))  # Convertir numpy.int64 a int
     tokens_by_author = df_corpus.groupby('Author')['Token_Count'].sum()
 
     statistics = {
