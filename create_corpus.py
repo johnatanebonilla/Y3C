@@ -30,6 +30,7 @@ from pytube import YouTube
 from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled
 from transformers import AutoTokenizer, pipeline, AutoModelForTokenClassification
 from deepmultilingualpunctuation import PunctuationModel
+import torch 
 import nltk
 
 nltk.download('punkt')
