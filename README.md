@@ -21,7 +21,7 @@ This project provides a Python script to create a corpus of YouTube transcriptio
 
 ## Usage
 
-The `create_corpus.py` script can be run from the command line with the following arguments:
+The `y3c.py` script can be run from the command line with the following arguments:
 
 - `--channels`: Path to the Excel file containing the list of channels.
 - `--output`: Directory where the output files will be saved, including the parquet files and the statistics Excel file.
@@ -30,7 +30,7 @@ The `create_corpus.py` script can be run from the command line with the followin
 ### Example
 
 ```sh
-python create_corpus.py --channels channels_test.xlsx --output folder_channels --lang es
+python y3c.py --channels channels_test.xlsx --output folder_channels --lang es
  ```
 
 ### Channel File Format
