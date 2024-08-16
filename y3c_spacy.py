@@ -36,6 +36,7 @@ def install_requirements():
     # Instalar el modelo en español de SpaCy
     subprocess.check_call([sys.executable, "-m", "spacy", "download", "es_core_news_sm"])
 
+# Asegurarse de que se instalen los requisitos
 install_requirements()
 
 # Cargar el modelo en español de SpaCy
@@ -154,13 +155,20 @@ def main():
     for index, row in df.iterrows():
         url = row['URL']
         video_id = obtener_id_video(url.strip())
-        
+
         if video_id and not transcripcion_ya_descargada(captions_folder, video_id):
             success = False
             while not success:
                 try:
-                    yt = YouTube(f"https://www.youtube.com/watch?v={video_id}")
-                    metadata = video_info(yt)
+                    # Manejo de excepción al intentar crear el objeto YouTube
+                    try:
+                        yt = YouTube(f"https://www.youtube.com/watch?v={video_id}")
+                        metadata = video_info(yt)
+                    except Exception as yt_error:
+                        print(f"Error al acceder a los datos del video {video_id}: {yt_error}")
+                        no_caption_videos.append(row)
+                        success = True
+                        continue
 
                     # Intentar obtener la transcripción
                     try:
@@ -180,7 +188,7 @@ def main():
                     nombre_archivo = os.path.join(captions_folder, f"{fecha}_{video_id}.txt")
                     guardar_transcripcion_y_metadata(transcripcion, metadata, nombre_archivo)
                     print(f"Transcripción y metadatos guardados: {nombre_archivo}")
-                    
+
                     success = True  # Si todo va bien, marcar como éxito
                     attempt = 0  # Reiniciar intentos si hay éxito
 
@@ -190,7 +198,7 @@ def main():
                     if attempt > 5:
                         print(f"Demasiados intentos fallidos para {video_id}. Abandonando.")
                         no_caption_videos.append(row)
-                        success = True  # Parar después de demasiados intentos
+                        success = True  # Salir del ciclo y continuar con el siguiente video
                     else:
                         wait_exponentially(attempt)  # Esperar de forma exponencial antes de reintentar
 
